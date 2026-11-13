@@ -67,7 +67,7 @@ export default function Coaching() {
           <div key={b.id} className="card flex flex-wrap items-center gap-4 p-4">
             <Photo src={b.trainer.photoUrl} alt="" className="h-14 w-14 flex-none rounded-2xl" />
             <div className="min-w-0 flex-1">
-              <div className="font-bold">{b.trainer.fullName}</div>
+              <Link to={`/app/coaching/${b.id}`} className="font-bold text-text hover:text-gold">{b.trainer.fullName}</Link>
               <div className="text-sm text-muted">{when(b.startsAt)}{b.gym ? ` · ${b.gym.name}` : ''} · {rwf(b.feeRwf)}</div>
             </div>
             <BookingStatus s={b.status} />
@@ -84,7 +84,7 @@ export default function Coaching() {
           <div className="card divide-y divide-line-soft">
             {past.map((b) => (
               <div key={b.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 text-sm">
-                <span><strong>{b.trainer.fullName}</strong> <span className="text-muted">· {when(b.startsAt)}{b.cancelReason ? ` · ${b.cancelReason}` : ''}</span></span>
+                <span><Link to={`/app/coaching/${b.id}`} className="font-bold text-text hover:text-gold">{b.trainer.fullName}</Link> <span className="text-muted">· {when(b.startsAt)}{b.cancelReason ? ` · ${b.cancelReason}` : ''}</span></span>
                 <BookingStatus s={b.status} />
               </div>
             ))}

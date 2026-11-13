@@ -31,7 +31,7 @@ export function Payments() {
           {list.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6">
               <div className="min-w-0">
-                <div className="font-semibold">{p.description}</div>
+                <Link to={`/app/payments/${p.id}`} className="font-semibold text-text hover:text-gold">{p.description}</Link>
                 <div className="mt-1 text-[13px] text-muted">
                   {dateTime(p.paidAt ?? p.createdAt)} · {METHOD[p.method]}
                   {p.failureReason && p.status !== 'PAID' && <> · {p.failureReason}</>}

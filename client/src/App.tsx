@@ -64,6 +64,16 @@ const AdminSettings = lazy(() => named(import('./portals/admin/AdminPages'), 'Ad
 const AdminInbox = lazy(() => named(import('./portals/admin/AdminPages'), 'AdminInbox'));
 const AdminAudit = lazy(() => named(import('./portals/admin/AdminPages'), 'AdminAudit'));
 
+// detail pages
+const AdminGymPage = lazy(() => named(import('./portals/admin/AdminDetails'), 'AdminGymPage'));
+const AdminTrainerPage = lazy(() => named(import('./portals/admin/AdminDetails'), 'AdminTrainerPage'));
+const AdminUserPage = lazy(() => named(import('./portals/admin/AdminDetails'), 'AdminUserPage'));
+const AdminPaymentPage = lazy(() => named(import('./portals/admin/AdminDetails'), 'AdminPaymentPage'));
+const GymTrainerPage = lazy(() => named(import('./portals/PortalDetails'), 'GymTrainerPage'));
+const GymStaffPage = lazy(() => named(import('./portals/PortalDetails'), 'GymStaffPage'));
+const ReceiptPage = lazy(() => named(import('./portals/PortalDetails'), 'ReceiptPage'));
+const SessionPage = lazy(() => import('./portals/PortalDetails').then((m) => ({ default: m.SessionPage })));
+
 const Fallback = () => <div className="min-h-[60vh] bg-ink" />;
 const only = (roles: Role[], el: ReactNode) => <ProtectedRoute roles={roles}>{el}</ProtectedRoute>;
 
@@ -94,6 +104,8 @@ export default function App() {
             <Route path="cards" element={<CardsList />} />
             <Route path="cards/:id" element={<CardPage />} />
             <Route path="coaching" element={<Coaching />} />
+            <Route path="coaching/:id" element={<SessionPage as="member" />} />
+            <Route path="payments/:id" element={<ReceiptPage />} />
             <Route path="messages" element={<MemberMessages />} />
             <Route path="payments" element={<Payments />} />
             <Route path="notifications" element={<Notifications />} />
@@ -109,7 +121,9 @@ export default function App() {
             <Route path="profile" element={<GymProfileEdit />} />
             <Route path="photos" element={<GymPhotos />} />
             <Route path="trainers" element={<GymTrainers />} />
+            <Route path="trainers/:id" element={<GymTrainerPage />} />
             <Route path="staff" element={<GymStaff />} />
+            <Route path="staff/:id" element={<GymStaffPage />} />
             <Route path="reports" element={<GymReports />} />
             <Route path="subscription" element={<GymSubscription />} />
           </Route>
@@ -117,6 +131,7 @@ export default function App() {
           <Route path="trainer" element={only(['TRAINER'], <TrainerLayout />)}>
             <Route index element={<TrainerHome />} />
             <Route path="sessions" element={<TrainerSessions />} />
+            <Route path="sessions/:id" element={<SessionPage as="trainer" />} />
             <Route path="availability" element={<TrainerAvailability />} />
             <Route path="profile" element={<TrainerProfile />} />
             <Route path="messages" element={<TrainerMessages />} />
@@ -125,9 +140,13 @@ export default function App() {
           <Route path="admin" element={only(['ADMIN'], <AdminLayout />)}>
             <Route index element={<AdminHome />} />
             <Route path="gyms" element={<AdminGyms />} />
+            <Route path="gyms/:id" element={<AdminGymPage />} />
             <Route path="trainers" element={<AdminTrainers />} />
+            <Route path="trainers/:id" element={<AdminTrainerPage />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="users/:id" element={<AdminUserPage />} />
             <Route path="payments" element={<AdminPayments />} />
+            <Route path="payments/:id" element={<AdminPaymentPage />} />
             <Route path="settings" element={<AdminSettings />} />
             <Route path="inbox" element={<AdminInbox />} />
             <Route path="audit" element={<AdminAudit />} />

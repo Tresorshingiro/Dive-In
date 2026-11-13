@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { fieldErrors, staffCreateSchema, type LinkedTrainerRow, type StaffRow } from '@dive/shared';
 import { api, ApiError } from '../../api/client';
 import { useFetch } from '../../hooks/useFetch';
@@ -58,11 +59,12 @@ export function Trainers() {
               <Photo src={t.photoUrl} alt={t.fullName} className="h-16 w-16 flex-none rounded-2xl" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="truncate font-bold">{t.fullName}</span>
+                  <Link to={`/gym/trainers/${t.trainerId}`} className="truncate font-bold text-text hover:text-gold">{t.fullName}</Link>
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${t.verificationStatus === 'VERIFIED' ? 'bg-success/15 text-success' : t.verificationStatus === 'PENDING' ? 'bg-warning/15 text-warning' : 'bg-error/15 text-error'}`}>{t.verificationStatus}</span>
                 </div>
                 <div className="truncate text-[13px] text-muted">{t.specialties.join(' · ') || 'No specialties yet'} · since {longDate(t.linkedAt)}</div>
               </div>
+              <Link to={`/gym/trainers/${t.trainerId}`} className="btn btn-ghost !h-9 !px-3 !text-[13px]">Details</Link>
               <button type="button" className="btn btn-ghost !h-9 !px-3 !text-[13px]" onClick={() => unlink(t)}>Remove</button>
             </div>
           ))}
@@ -171,7 +173,7 @@ export function Staff() {
               <span className="grid h-11 w-11 flex-none place-items-center rounded-full bg-field font-bold text-gold">{s.fullName.split(' ').map((p) => p[0]).slice(0, 2).join('')}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold">{s.fullName}</span>
+                  <Link to={`/gym/staff/${s.id}`} className="font-bold text-text hover:text-gold">{s.fullName}</Link>
                   {!s.active && <span className="rounded-full bg-field px-2 py-0.5 text-[11px] font-bold text-muted">DEACTIVATED</span>}
                   {s.active && s.mustChangePassword && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-bold text-warning">FIRST LOGIN PENDING</span>}
                 </div>

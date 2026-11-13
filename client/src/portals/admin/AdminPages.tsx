@@ -162,7 +162,7 @@ export function AdminGyms() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-lg font-bold">{g.name}</span>
+                    <Link to={`/admin/gyms/${g.id}`} className="text-lg font-bold text-text hover:text-gold">{g.name}</Link>
                     <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${pill(g.status)}`}>{g.status}</span>
                   </div>
                   <div className="mt-1 text-sm text-muted">{g.neighbourhood} · applied {longDate(g.createdAt)} · {g.owner.fullName} · {g.owner.email}{g.owner.phone ? ` · ${g.owner.phone}` : ''}</div>
@@ -173,6 +173,7 @@ export function AdminGyms() {
                   {g.statusNote && <div className="mt-2 text-[13px] text-warning">Note: {g.statusNote}</div>}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Link to={`/admin/gyms/${g.id}`} className="btn btn-ghost !h-10 !px-4 !text-[13px]">Full details</Link>
                   {g.status === 'APPROVED' && <a href={`/gyms/${g.slug}`} target="_blank" rel="noreferrer" className="btn btn-ghost !h-10 !px-4 !text-[13px]">View</a>}
                   {(g.status === 'PENDING' || g.status === 'REJECTED') && <button type="button" className="btn btn-gold !h-10 !px-4 !text-[13px]" onClick={() => run(`/admin/gyms/${g.id}/approve`, `Approve ${g.name}? It goes live and its free trial starts.`)}>Approve</button>}
                   {g.status === 'PENDING' && <button type="button" className="btn btn-ghost !h-10 !px-4 !text-[13px]" onClick={() => run(`/admin/gyms/${g.id}/reject`, undefined, 'Reason shown to the owner:')}>Reject</button>}
@@ -208,13 +209,14 @@ export function AdminTrainers() {
               <Photo src={t.photoUrl} alt="" className="h-24 w-20 flex-none rounded-2xl" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold">{t.fullName}</span>
+                  <Link to={`/admin/trainers/${t.id}`} className="font-bold text-text hover:text-gold">{t.fullName}</Link>
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${pill(t.verificationStatus)}`}>{t.verificationStatus}</span>
                 </div>
                 <div className="text-[13px] text-muted">{t.email}{t.phone ? ` · ${t.phone}` : ''} · joined {longDate(t.createdAt)}</div>
                 <div className="mt-1.5 text-[13px] text-chalk">{t.headline ?? 'No headline'} · {t.specialties.join(', ') || 'no specialties'}</div>
                 <div className="text-[13px] text-chalk">{t.certifications.length ? `Certs: ${t.certifications.join(', ')}` : 'No certifications listed'}{t.yearsExperience !== null ? ` · ${t.yearsExperience} yrs` : ''}{t.gyms.length ? ` · ${t.gyms.join(', ')}` : ''}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <Link to={`/admin/trainers/${t.id}`} className="btn btn-ghost !h-9 !px-3.5 !text-[13px]">Full details</Link>
                   {t.verificationStatus !== 'VERIFIED' && <button type="button" className="btn btn-gold !h-9 !px-3.5 !text-[13px]" onClick={() => run(`/admin/trainers/${t.id}/verify`, `Verify ${t.fullName}? They become public and bookable.`)}>Verify</button>}
                   {t.verificationStatus === 'PENDING' && <button type="button" className="btn btn-ghost !h-9 !px-3.5 !text-[13px]" onClick={() => run(`/admin/trainers/${t.id}/reject`, undefined, 'Reason shown to the trainer:')}>Reject</button>}
                   {t.verificationStatus !== 'PENDING' && <button type="button" className="btn btn-ghost !h-9 !px-3.5 !text-[13px]" onClick={() => run(`/admin/trainers/${t.id}/reopen`, `Move ${t.fullName} back to pending? They're hidden until verified again.`)}>Reopen</button>}
@@ -285,8 +287,8 @@ export function AdminUsers() {
             <tbody>
               {data.rows.map((u) => (
                 <tr key={u.id} className="border-b border-line-soft">
-                  <td className="px-5 py-3"><span className="font-semibold">{u.fullName}</span><span className="block text-xs text-muted">{u.email}{u.phone ? ` · ${u.phone}` : ''}</span></td>
-                  <td className="px-3 py-3 text-chalk">{u.role.replace('_', ' ').toLowerCase()}{u.role === 'ADMIN' && <span className={`ml-2 text-[11px] font-bold ${u.mfaEnabled ? 'text-success' : 'text-warning'}`}>{u.mfaEnabled ? '2FA' : 'NO 2FA YET'}</span>}</td>
+                  <td className="px-5 py-3"><Link to={`/admin/users/${u.id}`} className="font-semibold text-text hover:text-gold">{u.fullName}</Link><span className="block text-xs text-muted">{u.email}{u.phone ? ` · ${u.phone}` : ''}</span></td>
+                  <td className="px-3 py-3 text-chalk">{u.role.replace('_', ' ').toLowerCase()}{u.role === 'ADMIN' && u.mfaEnabled && <span className="ml-2 text-[11px] font-bold text-success">2FA</span>}</td>
                   <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${pill(u.status)}`}>{u.status}</span></td>
                   <td className="px-3 py-3 text-chalk">{u.lastLoginAt ? timeAgo(u.lastLoginAt) : 'never'}</td>
                   <td className="px-5 py-3 text-right">
@@ -335,7 +337,7 @@ function NewAdmin({ onClose, onCreated }: { onClose: () => void; onCreated: (s: 
           onCreated({ email: f.email, password: r.temporaryPassword });
         } catch (e2) { setErr(e2 instanceof ApiError ? e2.message : 'Failed'); }
       }}>
-        <p className="m-0 text-sm text-muted">They sign in at /admin/login, set up an authenticator app, then choose their own password.</p>
+        <p className="m-0 text-sm text-muted">They sign in at /admin/login with a temporary password, then choose their own.</p>
         <ErrorNote message={err} />
         <input className="field" placeholder="Full name" value={f.fullName} onChange={(e) => setF({ ...f, fullName: e.target.value })} aria-label="Full name" />
         <input className="field" type="email" placeholder="Email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} aria-label="Email" />
@@ -374,7 +376,7 @@ export function AdminPayments() {
           {data.rows.map((p) => (
             <div key={p.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
               <div className="min-w-0 flex-1">
-                <div className="font-semibold">{p.description}</div>
+                <Link to={`/admin/payments/${p.id}`} className="font-semibold text-text hover:text-gold">{p.description}</Link>
                 <div className="text-xs text-muted">{p.userName} · {p.userEmail} · {dateTime(p.paidAt ?? p.createdAt)} · {p.method === 'PAID_AT_GYM' ? 'at gym' : `${p.method.toLowerCase()} via ${p.provider}`}</div>
                 {p.failureReason && <div className={`mt-1 text-xs ${p.needsReview ? 'font-semibold text-warning' : 'text-faint'}`}>{p.failureReason.replace('NEEDS_REVIEW: ', '⚠ ')}</div>}
               </div>

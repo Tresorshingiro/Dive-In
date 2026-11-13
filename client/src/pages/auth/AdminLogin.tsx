@@ -32,7 +32,13 @@ export default function AdminLogin() {
     setError('');
     setBusy(true);
     try {
-      const r = await api<{ mfa: 'setup' | 'verify' }>('/auth/admin/login', { method: 'POST', body: { email, password } });
+      const r = await api<{ mfa?: 'setup' | 'verify'; user?: AuthUser }>('/auth/admin/login', { method: 'POST', body: { email, password } });
+      if (r.user) {
+        // Two-factor sign-in is off on the server: the password was enough.
+        await reload();
+        navigate(r.user.mustChangePassword ? '/account/password' : '/admin', { replace: true });
+        return;
+      }
       if (r.mfa === 'setup') {
         setSetup(await api('/auth/admin/mfa/setup', { method: 'POST' }));
         setStep('setup');
@@ -65,7 +71,7 @@ export default function AdminLogin() {
     <AuthShell side="Platform. Partners. Trust." image="/images/gym-3.webp" title={<>DIVE-IN<br /><span className="text-gold">admin.</span></>}>
       <div className="mb-6 flex items-center gap-3 rounded-2xl border border-gold-line bg-gold-deep px-4 py-3 text-sm text-chalk">
         <Icon name="shield" className="flex-none text-gold" />
-        Restricted area. Two-factor sign-in is required and every sign-in is logged.
+        Restricted area. Every sign-in is logged.
       </div>
       <FormError message={error} />
 

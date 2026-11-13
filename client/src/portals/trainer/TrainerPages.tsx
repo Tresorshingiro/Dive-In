@@ -48,7 +48,7 @@ function SessionRow({ b, onChanged }: { b: BookingView; onChanged?: () => void }
     <div className="card flex flex-wrap items-center gap-4 p-4">
       <span className="grid h-12 w-12 flex-none place-items-center rounded-2xl bg-field font-bold text-gold">{b.member.fullName.split(' ').map((p) => p[0]).slice(0, 2).join('')}</span>
       <div className="min-w-0 flex-1">
-        <div className="font-bold">{b.member.fullName}</div>
+        <Link to={`/trainer/sessions/${b.id}`} className="font-bold text-text hover:text-gold">{b.member.fullName}</Link>
         <div className="text-sm text-muted">{when(b.startsAt)}{b.gym ? ` · ${b.gym.name}` : ''} · {rwf(b.feeRwf)}{b.member.phone ? ` · ${b.member.phone}` : ''}</div>
         {b.note && <div className="mt-1 text-sm text-chalk">“{b.note}”</div>}
         {err && <div className="mt-1 text-sm text-error">{err}</div>}
