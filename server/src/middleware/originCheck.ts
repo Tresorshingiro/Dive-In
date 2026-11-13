@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { env } from '../config/env';
+import { allowedOrigins } from '../config/env';
 import { forbidden } from '../lib/errors';
 
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -12,6 +12,6 @@ const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 export function originCheck(req: Request, _res: Response, next: NextFunction) {
   if (SAFE.has(req.method)) return next();
   const origin = req.header('origin');
-  if (origin && origin !== env.CLIENT_URL) throw forbidden('Cross-site request blocked');
+  if (origin && !allowedOrigins.includes(origin)) throw forbidden('Cross-site request blocked');
   next();
 }

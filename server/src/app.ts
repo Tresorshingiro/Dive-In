@@ -2,7 +2,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
-import { env, isProd } from './config/env';
+import { allowedOrigins, env, isProd } from './config/env';
 import { originCheck } from './middleware/originCheck';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import authRoutes from './modules/auth/auth.routes';
@@ -20,12 +20,12 @@ import { UPLOAD_ROOT } from './modules/gym/photos.service';
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', 1);
+  app.set('trust proxy', env.TRUST_PROXY);
   app.disable('x-powered-by');
 
   // same-site: dive.rw may load images from api.dive.rw
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
-  app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+  app.use(cors({ origin: allowedOrigins, credentials: true }));
 
   // Uploaded gym photos (file names are random UUIDs, so they can be cached forever).
   app.use('/uploads', express.static(UPLOAD_ROOT, { immutable: true, maxAge: '365d', index: false }));

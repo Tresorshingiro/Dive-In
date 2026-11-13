@@ -5,6 +5,13 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().default(4000),
   CLIENT_URL: z.string().url().default('http://localhost:5173'),
+  /** More site addresses allowed to call the API (comma separated), e.g. a custom domain. */
+  EXTRA_ORIGINS: z
+    .string()
+    .default('')
+    .transform((v) => v.split(',').map((s) => s.trim().replace(/\/$/, '')).filter(Boolean)),
+  /** Proxies in front of the API: 1 = Render only; 2 = Vercel rewrite + Render. Used to find the visitor's real IP. */
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(1),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required — copy server/.env.example to server/.env'),
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
@@ -38,3 +45,5 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === 'production';
+/** Every browser origin allowed to make state-changing requests. */
+export const allowedOrigins = [env.CLIENT_URL.replace(/\/$/, ''), ...env.EXTRA_ORIGINS];
