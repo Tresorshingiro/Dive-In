@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+# original full-size photos (optimised .webp files in client/public/images are committed)
+client/assets-src/photos/
+
+# uploaded files (gym photos)
+server/uploads/
+docs/
