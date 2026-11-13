@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../../middleware/auth';
 import { validateBody, validateQuery } from '../../middleware/validate';
 import { refundPayment } from '../payments/payments.service';
 import * as admin from './admin.service';
+import * as detail from './admin.detail.service';
 
 /**
  * /api/admin — DIVE-IN control centre. Admin sessions only exist after password + TOTP
@@ -18,6 +19,12 @@ const param = (req: Request, k: string) => String(req.params[k]);
 const statusQ = (values: readonly [string, ...string[]]) => validateQuery(z.object({ status: z.enum(values).optional() }));
 
 router.get('/overview', async (_req, res) => res.json({ area: 'admin', overview: await admin.overview() }));
+
+// full detail pages
+router.get('/gyms/:id', async (req, res) => res.json({ gym: await detail.gymDetail(param(req, 'id')) }));
+router.get('/trainers/:id', async (req, res) => res.json({ trainer: await detail.trainerDetail(param(req, 'id')) }));
+router.get('/users/:id', async (req, res) => res.json({ user: await detail.userDetail(param(req, 'id')) }));
+router.get('/payments/:id', async (req, res) => res.json({ payment: await detail.paymentDetail(param(req, 'id')) }));
 
 router.get('/gyms', statusQ(['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED']), async (_req, res) => res.json({ gyms: await admin.listGyms(res.locals.query.status) }));
 for (const action of ['approve', 'reject', 'suspend', 'reinstate'] as const) {

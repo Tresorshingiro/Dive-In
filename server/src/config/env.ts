@@ -11,6 +11,8 @@ const schema = z.object({
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().positive().default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+  /** Admin sign-in with an authenticator app (TOTP). Off by default; set to "true" to require it. */
+  ADMIN_MFA_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   /** stripe = real Stripe (test mode in dev); mock = offline provider used by automated tests */
   PAYMENT_PROVIDER: z.enum(['stripe', 'mock']).default('stripe'),
   STRIPE_SECRET_KEY: z.string().startsWith('sk_', 'STRIPE_SECRET_KEY must start with sk_').optional().or(z.literal('')),

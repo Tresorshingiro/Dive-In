@@ -15,6 +15,7 @@ import { optionalAuth, requireAuth, requireRole } from '../../middleware/auth';
 import { validateBody, validateQuery } from '../../middleware/validate';
 import * as coaching from './coaching.service';
 import * as trainer from './trainer.service';
+import * as details from '../portal/details.service';
 
 const key = (req: Request) => {
   const k = idempotencyKeySchema.safeParse(req.header('idempotency-key'));
@@ -38,6 +39,8 @@ memberCoachingRouter.post('/coach-pass/checkout', async (req, res) => {
   res.status(201).json({ paymentId: r.paymentId, redirectUrl: r.redirectUrl });
 });
 memberCoachingRouter.get('/bookings', async (req, res) => res.json({ bookings: await coaching.myBookings(req.user!.id) }));
+memberCoachingRouter.get('/bookings/:id', async (req, res) => res.json({ session: await details.session(param(req, 'id'), req.user!) }));
+memberCoachingRouter.get('/receipts/:id', async (req, res) => res.json({ receipt: await details.receipt(req.user!.id, param(req, 'id')) }));
 memberCoachingRouter.post('/bookings', validateBody(bookingCreateSchema), async (req, res) => {
   res.status(201).json(await coaching.book({ ...req.user!, role: 'MEMBER' }, req.body.trainerId, req.body.startsAt, req.body.note, key(req)));
 });
@@ -75,6 +78,7 @@ trainerRouter.delete('/days-off/:id', async (req, res) => res.json(await trainer
 trainerRouter.get('/sessions', validateQuery(z.object({ scope: z.enum(['upcoming', 'past']).default('upcoming') })), async (req, res) => {
   res.json({ sessions: await trainer.sessions(req.user!.id, (res.locals.query as { scope: 'upcoming' | 'past' }).scope) });
 });
+trainerRouter.get('/sessions/:id', async (req, res) => res.json({ session: await details.session(param(req, 'id'), req.user!) }));
 trainerRouter.post('/sessions/:id/complete', async (req, res) => {
   await trainer.completeSession(req.user!.id, param(req, 'id'));
   res.status(204).end();

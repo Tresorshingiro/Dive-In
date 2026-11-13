@@ -13,6 +13,7 @@ import {
   subscriptionCheckoutSchema,
 } from '@dive/shared';
 import * as subscription from './subscription.service';
+import * as details from '../portal/details.service';
 import { badRequest } from '../../lib/errors';
 import { requireAuth, requireRole } from '../../middleware/auth';
 import { requireGymScope } from '../../middleware/gymScope';
@@ -133,6 +134,8 @@ router.post('/trainers', ownerOnly, validateBody(linkTrainerSchema), async (req,
   await gym.linkTrainer(gymId(req), req.body.email, actor(req));
   res.status(201).json({ trainers: await gym.listTrainers(gymId(req)) });
 });
+router.get('/trainers/:trainerId', ownerOnly, async (req, res) => res.json({ trainer: await details.gymTrainer(gymId(req), param(req, 'trainerId')) }));
+router.get('/staff/:id', ownerOnly, async (req, res) => res.json({ staff: await details.gymStaff(gymId(req), param(req, 'id')) }));
 router.delete('/trainers/:trainerId', ownerOnly, async (req, res) => {
   await gym.unlinkTrainer(gymId(req), param(req, 'trainerId'), actor(req));
   res.status(204).end();

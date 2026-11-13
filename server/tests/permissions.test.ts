@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma';
+import { env } from '../src/config/env';
 import { adminLogin, agent, anon, key, login, PW, reseed, type Agent } from './helpers';
 
 type Who = 'anon' | 'member' | 'owner' | 'reception' | 'trainer' | 'admin';
@@ -116,17 +117,78 @@ describe('gym isolation', () => {
   });
 });
 
+describe('detail pages', () => {
+  it('admin detail endpoints are admin-only and return full records', async () => {
+    const gym = await prisma.gym.findUniqueOrThrow({ where: { slug: 'kibagabaga-body-works' } });
+    const trainer = await prisma.trainer.findFirstOrThrow({ where: { verificationStatus: 'PENDING' } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { email: 'sarah@demo.dive.rw' } });
+    const payment = await prisma.payment.findFirstOrThrow({ where: { userId: user.id } });
+    const paths = [`/api/admin/gyms/${gym.id}`, `/api/admin/trainers/${trainer.id}`, `/api/admin/users/${user.id}`, `/api/admin/payments/${payment.id}`];
+    for (const p of paths) {
+      expect((await users.admin!.get(p)).status, p).toBe(200);
+      for (const who of ['member', 'owner', 'reception', 'trainer'] as const) expect((await as(who).get(p)).status, `${who} ${p}`).toBe(403);
+    }
+    const g = (await users.admin!.get(`/api/admin/gyms/${gym.id}`)).body.gym;
+    expect(g.owner.email).toBe('owner.pending@demo.dive.rw');
+    expect(g.photos.length).toBeGreaterThan(0);
+    const u = (await users.admin!.get(`/api/admin/users/${user.id}`)).body.user;
+    expect(u.memberships.length).toBeGreaterThan(0);
+    expect(u.coachPasses.length).toBeGreaterThan(0);
+  });
+
+  it("a session is visible only to its own trainer and member", async () => {
+    const b = await prisma.booking.findFirstOrThrow({ where: { member: { email: 'sarah@demo.dive.rw' } } });
+    expect((await users.trainer!.get(`/api/trainer/sessions/${b.id}`)).body.session.member.phone).toBeTruthy();
+    const sarah = await login('sarah@demo.dive.rw');
+    const mine = (await sarah.get(`/api/me/bookings/${b.id}`)).body.session;
+    expect(mine.member).not.toHaveProperty('phone'); // members don't get their own contact echoed, trainers do
+    expect((await users.member!.get(`/api/me/bookings/${b.id}`)).status).toBe(404);
+    const otherTrainer = await login('aline@demo.dive.rw');
+    expect((await otherTrainer.get(`/api/trainer/sessions/${b.id}`)).status).toBe(404);
+  });
+
+  it("owners can open only their own gym's staff and linked trainers", async () => {
+    const pulseStaff = await prisma.gymStaff.findFirstOrThrow({ where: { gym: { slug: 'pulse-studio' } } });
+    const ironStaff = await prisma.gymStaff.findFirstOrThrow({ where: { gym: { slug: 'iron-house' } } });
+    expect((await users.owner!.get(`/api/gym/staff/${ironStaff.id}`)).status).toBe(200);
+    expect((await users.owner!.get(`/api/gym/staff/${pulseStaff.id}`)).status).toBe(404);
+    const aline = await prisma.trainer.findFirstOrThrow({ where: { user: { email: 'aline@demo.dive.rw' } } }); // Pulse only
+    expect((await users.owner!.get(`/api/gym/trainers/${aline.id}`)).status).toBe(404);
+    expect((await users.reception!.get(`/api/gym/staff/${ironStaff.id}`)).status).toBe(403);
+  });
+
+  it("receipts belong to their payer", async () => {
+    const sarahUser = await prisma.user.findUniqueOrThrow({ where: { email: 'sarah@demo.dive.rw' } });
+    const p = await prisma.payment.findFirstOrThrow({ where: { userId: sarahUser.id, status: 'PAID' } });
+    expect((await (await login('sarah@demo.dive.rw')).get(`/api/me/receipts/${p.id}`)).body.receipt.amountRwf).toBe(p.amountRwf);
+    expect((await users.member!.get(`/api/me/receipts/${p.id}`)).status).toBe(404);
+  });
+});
+
 describe('accounts and sessions', () => {
   it('admins cannot use the regular login, and the admin login refuses others', async () => {
     expect((await anon().post('/api/auth/login').send({ email: 'admin@demo.dive.rw', password: PW })).status).toBe(403);
     expect((await anon().post('/api/auth/admin/login').send({ email: 'member@demo.dive.rw', password: PW })).status).toBe(403);
   });
 
-  it('a correct admin password alone gives no session', async () => {
+  it('with two-factor off (the default), the admin password signs in', async () => {
     const a = agent();
-    await a.post('/api/auth/admin/login').send({ email: 'admin@demo.dive.rw', password: PW });
-    expect((await a.get('/api/admin/overview')).status).toBe(401);
-    expect((await a.post('/api/auth/admin/mfa/verify').send({ code: '000000' })).status).toBe(400);
+    const r = await a.post('/api/auth/admin/login').send({ email: 'admin@demo.dive.rw', password: PW });
+    expect(r.body.user.role).toBe('ADMIN');
+    expect((await a.get('/api/admin/overview')).status).toBe(200);
+  });
+
+  it('with ADMIN_MFA_ENABLED on, a correct admin password alone gives no session', async () => {
+    env.ADMIN_MFA_ENABLED = true;
+    try {
+      const a = agent();
+      await a.post('/api/auth/admin/login').send({ email: 'admin@demo.dive.rw', password: PW });
+      expect((await a.get('/api/admin/overview')).status).toBe(401);
+      await a.post('/api/auth/admin/mfa/setup');
+      expect((await a.post('/api/auth/admin/mfa/verify').send({ code: '000000' })).status).toBe(400);
+    } finally {
+      env.ADMIN_MFA_ENABLED = false;
+    }
   });
 
   it('staff with a temporary password are blocked until they change it', async () => {

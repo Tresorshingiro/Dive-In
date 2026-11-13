@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import rateLimit from 'express-rate-limit';
 import { changePasswordSchema, loginSchema, registerSchema, totpCodeSchema } from '@dive/shared';
-import { isProd } from '../../config/env';
+import { env, isProd } from '../../config/env';
 import { validateBody } from '../../middleware/validate';
 import { optionalAuth, requireAuth } from '../../middleware/auth';
 import { REFRESH_COOKIE, clearAuthCookies, setAuthCookies } from '../../lib/tokens';
@@ -38,6 +38,12 @@ const MFA_COOKIE = 'dive_mfa';
 const mfaCookie = { httpOnly: true, secure: isProd, sameSite: 'strict' as const, path: '/api/auth/admin' };
 
 router.post('/admin/login', loginLimiter, validateBody(loginSchema), async (req, res) => {
+  // Two-factor sign-in is switched off unless ADMIN_MFA_ENABLED=true: password alone signs the admin in.
+  if (!env.ADMIN_MFA_ENABLED) {
+    const { userId, tokens } = await auth.login(req.body, client(req), { adminOnly: true });
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    return res.json({ user: await auth.toAuthUser(userId) });
+  }
   const { ticket, mfa } = await auth.adminPasswordStep(req.body, client(req));
   res.cookie(MFA_COOKIE, ticket, { ...mfaCookie, maxAge: 5 * 60 * 1000 });
   res.json({ mfa });

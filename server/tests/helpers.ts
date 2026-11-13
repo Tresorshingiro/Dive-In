@@ -53,6 +53,11 @@ export async function adminLogin(email = 'admin@demo.dive.rw'): Promise<{ a: Age
   const a = agent();
   const step1 = await a.post('/api/auth/admin/login').send({ email, password: PW });
   if (step1.status !== 200) throw new Error(`admin login → ${step1.status}`);
+  if (step1.body.user) {
+    // Two-factor sign-in is off (the default): the password was enough.
+    admin = { a, secret: '' };
+    return admin;
+  }
   const setup = await a.post('/api/auth/admin/mfa/setup');
   const secret = setup.body.secret as string;
   const v = await a.post('/api/auth/admin/mfa/verify').send({ code: totpCode(secret, currentStep()) });
