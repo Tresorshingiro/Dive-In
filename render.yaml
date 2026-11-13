@@ -1,0 +1,46 @@
+# Render Blueprint for the DIVE-IN API (Express + Prisma).
+# Render → New → Blueprint → pick this repo. Values marked `sync: false` are asked for on first deploy.
+services:
+  - type: web
+    name: dive-in-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    # Installs only the server + shared workspaces (dev deps are needed to build: prisma CLI, tsup, TypeScript).
+    buildCommand: npm ci --include=dev --workspace=server --workspace=shared --include-workspace-root && npm run build -w server
+    # Applies any new database migrations, then starts the API.
+    startCommand: npm run db:deploy -w server && npm start -w server
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Supabase → Connect → "Session pooler" URI (IPv4). Not the db.<ref>.supabase.co address: Render can't reach IPv6.
+      - key: DATABASE_URL
+        sync: false
+      # Your Vercel site, e.g. https://dive-in.vercel.app (no trailing slash)
+      - key: CLIENT_URL
+        sync: false
+      # Optional extra site addresses, comma separated (e.g. https://dive.rw)
+      - key: EXTRA_ORIGINS
+        sync: false
+      # Requests arrive through Vercel's /api rewrite and then Render's load balancer.
+      - key: TRUST_PROXY
+        value: "2"
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: MOCK_PAYMENT_WEBHOOK_SECRET
+        generateValue: true
+      - key: PAYMENT_PROVIDER
+        value: stripe
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      # From Stripe → Developers → Webhooks → your endpoint https://<this service>.onrender.com/api/webhooks/stripe
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: ADMIN_MFA_ENABLED
+        value: "false"
