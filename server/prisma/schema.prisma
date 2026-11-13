@@ -1,0 +1,596 @@
+// DIVE Fitness Hub — database schema
+// Money is stored as whole Rwandan francs (Int). Times are UTC.
+// Two partial unique indexes Prisma cannot express live in the first migration's SQL:
+//   - one AWAITING_PAYMENT/ACTIVE membership per (member, gym)
+//   - one PENDING_PAYMENT/CONFIRMED booking per (trainer, startsAt)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── enums ───────────────────────────────
+
+enum Role {
+  MEMBER
+  GYM_OWNER
+  RECEPTIONIST
+  TRAINER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum GymStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum StaffRole {
+  RECEPTIONIST
+}
+
+enum MembershipStatus {
+  AWAITING_PAYMENT
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentPurpose {
+  MEMBERSHIP
+  COACH_PASS
+  SESSION
+  GYM_SUBSCRIPTION
+}
+
+enum PaymentMethod {
+  MOMO
+  CARD
+  PAID_AT_GYM // recorded by the gym owner when the gym collects directly
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum CheckInResult {
+  ALLOWED
+  DENIED
+}
+
+enum SubscriptionPlan {
+  TRIAL
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum ContactRole {
+  MEMBER
+  GYM_OWNER
+  TRAINER
+  OTHER
+}
+
+// ─────────────────────────────── users & auth ───────────────────────────────
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  phone        String?
+  fullName     String     @map("full_name")
+  passwordHash String     @map("password_hash")
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  totpSecret   String?    @map("totp_secret") // admins: AES-GCM encrypted TOTP secret
+  /** Set once the admin has confirmed their authenticator app. */
+  totpEnabledAt DateTime? @map("totp_enabled_at")
+  /** Last accepted TOTP time-step, so a code can't be replayed. */
+  totpLastStep  Int?      @map("totp_last_step")
+  /** Set for accounts created by someone else with a temporary password (e.g. reception staff). */
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  refreshTokens     RefreshToken[]
+  ownedGyms         Gym[]               @relation("GymOwner")
+  staffOf           GymStaff?
+  trainer           Trainer?
+  memberships       Membership[]
+  payments          Payment[]
+  coachPasses       CoachAccessPass[]
+  bookings          Booking[]           @relation("BookingMember")
+  checkInsRecorded  CheckIn[]           @relation("CheckInStaff")
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  conversations     Conversation[]      @relation("ConversationMember")
+  messagesSent      Message[]
+  configUpdates     PlatformConfig[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") // sha256 of the opaque token
+  familyId   String    @map("family_id") @db.Uuid // rotation chain; reuse revokes the whole family
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  replacedBy String?   @map("replaced_by") @db.Uuid
+  userAgent  String?   @map("user_agent")
+  ip         String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────── gyms ───────────────────────────────
+
+model Gym {
+  id                  String    @id @default(uuid()) @db.Uuid
+  ownerId             String    @map("owner_id") @db.Uuid
+  name                String
+  slug                String    @unique
+  description         String?
+  neighbourhood       String
+  address             String?
+  lat                 Decimal?  @db.Decimal(9, 6)
+  lng                 Decimal?  @db.Decimal(9, 6)
+  phone               String?
+  email               String?
+  openingHours        Json?     @map("opening_hours") // { mon: "05:30-22:00", ... }
+  tags                String[]  @default([])          // "Strength", "Pool", ...
+  amenities           String[]  @default([])
+  status              GymStatus @default(PENDING)
+  statusNote          String?   @map("status_note")
+  approvedAt          DateTime? @map("approved_at")
+  /** Members can pay through DIVE checkout. Otherwise they pay at the gym. */
+  diveCheckoutEnabled Boolean   @default(false) @map("dive_checkout_enabled")
+  /** Gym agreed to the DIVE commission on memberships paid through DIVE. */
+  commissionOptIn     Boolean   @default(false) @map("commission_opt_in")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  owner         User              @relation("GymOwner", fields: [ownerId], references: [id])
+  photos        GymPhoto[]
+  staff         GymStaff[]
+  packages      Package[]
+  memberships   Membership[]
+  trainers      TrainerGym[]
+  checkIns      CheckIn[]
+  subscriptions GymSubscription[]
+
+  @@index([status, neighbourhood])
+  @@index([ownerId])
+  @@map("gyms")
+}
+
+model GymPhoto {
+  id        String   @id @default(uuid()) @db.Uuid
+  gymId     String   @map("gym_id") @db.Uuid
+  url       String
+  caption   String?
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@index([gymId, sortOrder])
+  @@map("gym_photos")
+}
+
+/// A staff account belongs to exactly one gym (userId is unique).
+model GymStaff {
+  id          String    @id @default(uuid()) @db.Uuid
+  gymId       String    @map("gym_id") @db.Uuid
+  userId      String    @unique @map("user_id") @db.Uuid
+  staffRole   StaffRole @default(RECEPTIONIST) @map("staff_role")
+  active      Boolean   @default(true)
+  createdById String?   @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  gym  Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([gymId])
+  @@map("gym_staff")
+}
+
+model Package {
+  id           String   @id @default(uuid()) @db.Uuid
+  gymId        String   @map("gym_id") @db.Uuid
+  name         String
+  description  String?
+  durationDays Int      @map("duration_days")
+  priceRwf     Int      @map("price_rwf")
+  perks        String[] @default([])
+  active       Boolean  @default(true)
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  gym         Gym          @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+
+  @@index([gymId, active])
+  @@map("packages")
+}
+
+model Membership {
+  id        String           @id @default(uuid()) @db.Uuid
+  /** Sequence shown on the card as DV-0000-0123 (see formatMembershipNumber). */
+  number    Int              @unique @default(autoincrement())
+  memberId  String           @map("member_id") @db.Uuid
+  gymId     String           @map("gym_id") @db.Uuid
+  packageId String           @map("package_id") @db.Uuid
+  status    MembershipStatus @default(AWAITING_PAYMENT)
+  /** Price at purchase time; packages can change later. */
+  priceRwf  Int              @map("price_rwf")
+  startsAt  DateTime?        @map("starts_at")
+  endsAt    DateTime?        @map("ends_at")
+  activatedAt DateTime?      @map("activated_at")
+  cancelledAt DateTime?      @map("cancelled_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  member   User      @relation(fields: [memberId], references: [id])
+  gym      Gym       @relation(fields: [gymId], references: [id])
+  package  Package   @relation(fields: [packageId], references: [id])
+  checkIns CheckIn[]
+
+  @@index([gymId, status])
+  @@index([memberId])
+  @@map("memberships")
+}
+
+// ─────────────────────────────── payments ───────────────────────────────
+
+model Payment {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  purpose        PaymentPurpose
+  /** id of the Membership / CoachAccessPass / Booking / GymSubscription being paid for */
+  targetId       String         @map("target_id") @db.Uuid
+  amountRwf      Int            @map("amount_rwf")
+  commissionRwf  Int            @default(0) @map("commission_rwf")
+  payeeShareRwf  Int            @default(0) @map("payee_share_rwf") // gym / trainer share
+  method         PaymentMethod
+  provider       String         // "mock", "mtn_momo", "flutterwave", "gym"
+  /** Provider's transaction id. Set by the server, never by the customer. */
+  providerRef    String?        @unique @map("provider_ref")
+  status         PaymentStatus  @default(PENDING)
+  /** Client-supplied key; the same key always returns the same payment. */
+  idempotencyKey String         @map("idempotency_key")
+  failureReason  String?        @map("failure_reason")
+  /** Hosted checkout page (Stripe Checkout URL). Re-used when the same idempotency key is retried. */
+  checkoutUrl    String?        @map("checkout_url")
+  /** Checkout link stops working after this. */
+  expiresAt      DateTime?      @map("expires_at")
+  /** What to do on success, e.g. { packageId, durationDays, renewal } for memberships. */
+  meta           Json?
+  paidAt         DateTime?      @map("paid_at")
+  verifiedAt     DateTime?      @map("verified_at")
+  recordedById   String?        @map("recorded_by_id") @db.Uuid // PAID_AT_GYM: the owner who recorded it
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  user   User           @relation(fields: [userId], references: [id])
+  events PaymentEvent[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([purpose, targetId])
+  @@index([status])
+  @@map("payments")
+}
+
+/// Every webhook received, stored once. Duplicate deliveries hit the unique key and are ignored.
+model PaymentEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  provider   String
+  eventId    String   @map("event_id")
+  paymentId  String?  @map("payment_id") @db.Uuid
+  type       String
+  payload    Json
+  processed  Boolean  @default(false)
+  receivedAt DateTime @default(now()) @map("received_at")
+
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@unique([provider, eventId])
+  @@map("payment_events")
+}
+
+// ─────────────────────────────── trainers & coaching ───────────────────────────────
+
+model Trainer {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @unique @map("user_id") @db.Uuid
+  headline           String?            // free profile
+  bio                String?            // full profile (Coach Access Pass)
+  photoUrl           String?            @map("photo_url")
+  specialties        String[]           @default([])
+  certifications     String[]           @default([])
+  yearsExperience    Int?               @map("years_experience")
+  languages          String[]           @default([])
+  sessionFeeRwf      Int?               @map("session_fee_rwf")
+  sessionMinutes     Int                @default(60) @map("session_minutes")
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?          @map("verified_at")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gyms          TrainerGym[]
+  availability  TrainerAvailability[]
+  exceptions    AvailabilityException[]
+  bookings      Booking[]
+  conversations Conversation[]
+
+  @@index([verificationStatus])
+  @@map("trainers")
+}
+
+model TrainerGym {
+  trainerId String   @map("trainer_id") @db.Uuid
+  gymId     String   @map("gym_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  trainer Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  gym     Gym     @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@id([trainerId, gymId])
+  @@map("trainer_gyms")
+}
+
+/// Weekly recurring slots. weekday 0 = Sunday. Times are "HH:MM" Kigali time (UTC+2).
+model TrainerAvailability {
+  id        String  @id @default(uuid()) @db.Uuid
+  trainerId String  @map("trainer_id") @db.Uuid
+  weekday   Int
+  startTime String  @map("start_time")
+  endTime   String  @map("end_time")
+  gymId     String? @map("gym_id") @db.Uuid
+
+  trainer Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId, weekday])
+  @@map("trainer_availability")
+}
+
+/// A date the trainer is off (or has extra hours).
+model AvailabilityException {
+  id        String   @id @default(uuid()) @db.Uuid
+  trainerId String   @map("trainer_id") @db.Uuid
+  date      DateTime @db.Date
+  available Boolean  @default(false)
+  startTime String?  @map("start_time")
+  endTime   String?  @map("end_time")
+  note      String?
+
+  trainer Trainer @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId, date])
+  @@map("availability_exceptions")
+}
+
+model CoachAccessPass {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  /** The payment that bought it (its id was reserved when checkout started). */
+  paymentId String?  @unique @map("payment_id") @db.Uuid
+  priceRwf  Int      @map("price_rwf")
+  startsAt  DateTime @map("starts_at")
+  endsAt    DateTime @map("ends_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, endsAt])
+  @@map("coach_access_passes")
+}
+
+model Booking {
+  id            String        @id @default(uuid()) @db.Uuid
+  memberId      String        @map("member_id") @db.Uuid
+  trainerId     String        @map("trainer_id") @db.Uuid
+  gymId         String?       @map("gym_id") @db.Uuid
+  startsAt      DateTime      @map("starts_at")
+  endsAt        DateTime      @map("ends_at")
+  feeRwf        Int           @map("fee_rwf")
+  status        BookingStatus @default(PENDING_PAYMENT)
+  /** Unpaid bookings release the slot after this time. */
+  holdExpiresAt DateTime?     @map("hold_expires_at")
+  note          String?
+  cancelledAt   DateTime?     @map("cancelled_at")
+  cancelReason  String?       @map("cancel_reason")
+  cancelledById String?       @map("cancelled_by_id") @db.Uuid
+  completedAt   DateTime?     @map("completed_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  member  User    @relation("BookingMember", fields: [memberId], references: [id])
+  trainer Trainer @relation(fields: [trainerId], references: [id])
+
+  @@index([trainerId, startsAt])
+  @@index([memberId])
+  @@map("bookings")
+}
+
+model Conversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  memberId  String   @map("member_id") @db.Uuid
+  trainerId String   @map("trainer_id") @db.Uuid
+  lastMessageAt DateTime @default(now()) @map("last_message_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  member   User      @relation("ConversationMember", fields: [memberId], references: [id])
+  trainer  Trainer   @relation(fields: [trainerId], references: [id])
+  messages Message[]
+
+  @@unique([memberId, trainerId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String    @id @default(uuid()) @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  senderId       String    @map("sender_id") @db.Uuid
+  body           String
+  readAt         DateTime? @map("read_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ─────────────────────────────── reception ───────────────────────────────
+
+model CheckIn {
+  id           String        @id @default(uuid()) @db.Uuid
+  membershipId String        @map("membership_id") @db.Uuid
+  gymId        String        @map("gym_id") @db.Uuid
+  staffId      String        @map("staff_id") @db.Uuid
+  result       CheckInResult
+  reason       String?
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  membership Membership @relation(fields: [membershipId], references: [id])
+  gym        Gym        @relation(fields: [gymId], references: [id])
+  staff      User       @relation("CheckInStaff", fields: [staffId], references: [id])
+
+  @@index([gymId, createdAt])
+  @@index([membershipId])
+  @@map("check_ins")
+}
+
+// ─────────────────────────────── platform ───────────────────────────────
+
+model GymSubscription {
+  id        String             @id @default(uuid()) @db.Uuid
+  gymId     String             @map("gym_id") @db.Uuid
+  plan      SubscriptionPlan
+  status    SubscriptionStatus @default(ACTIVE)
+  priceRwf  Int                @default(0) @map("price_rwf")
+  startsAt  DateTime           @map("starts_at")
+  endsAt    DateTime           @map("ends_at")
+  paymentId String?            @map("payment_id") @db.Uuid
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  gym Gym @relation(fields: [gymId], references: [id], onDelete: Cascade)
+
+  @@index([gymId, endsAt])
+  @@map("gym_subscriptions")
+}
+
+/// Prices and switches the admin can change without a deploy.
+model PlatformConfig {
+  key         String   @id
+  value       Json
+  description String?
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  updatedBy User? @relation(fields: [updatedById], references: [id])
+
+  @@map("platform_config")
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model ContactMessage {
+  id            String      @id @default(uuid()) @db.Uuid
+  name          String
+  email         String
+  phone         String?
+  role          ContactRole
+  gymName       String?     @map("gym_name")
+  neighbourhood String?
+  message       String
+  ip            String?
+  handledAt     DateTime?   @map("handled_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("contact_messages")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  actorRole Role?    @map("actor_role")
+  action    String   // e.g. "auth.login", "gym.approve", "checkin.record"
+  entity    String?
+  entityId  String?  @map("entity_id")
+  gymId     String?  @map("gym_id") @db.Uuid
+  before    Json?
+  after     Json?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@index([gymId, createdAt])
+  @@map("audit_logs")
+}
