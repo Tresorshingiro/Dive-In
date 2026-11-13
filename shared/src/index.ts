@@ -6,3 +6,4 @@ export * from './gymTypes';
 export * from './coachSchemas';
 export * from './coachTypes';
 export * from './admin';
+export * from './details';
